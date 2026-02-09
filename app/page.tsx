@@ -148,7 +148,7 @@ export default function Home() {
             {/* Container with overflow-hidden for the HARD CROP effect */}
             <div className="relative w-full h-[280px] sm:h-[350px] md:h-[500px] overflow-hidden rounded-t-[24px] sm:rounded-t-[32px] md:rounded-t-[60px]">
               <Image
-                src="/hero-img-tribe.png"
+                src="/Group 6.png"
                 alt="Family gathering"
                 fill
                 className="object-cover object-top"
