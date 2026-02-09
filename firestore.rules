@@ -1,0 +1,108 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper: Check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Helper: Get the user's profile data
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    // Helper: Check if user belongs to the family
+    function isFamilyMember(familyId) {
+      return isAuthenticated() && getUserData().familyId == familyId;
+    }
+    
+    // USERS: Users can read/write their own profile
+    // AND Allow reading other users if they are in the same family
+    match /users/{userId} {
+      allow write: if isAuthenticated() && request.auth.uid == userId;
+      allow read: if isAuthenticated() && (
+        request.auth.uid == userId || 
+        (resource.data.familyId != null && resource.data.familyId == getUserData().familyId)
+      );
+    }
+    
+
+    // FAMILIES: 
+    // - Create: Authenticated users can create
+    // - Read: Members of the family
+    match /families/{familyId} {
+      allow create: if isAuthenticated();
+      allow read: if isFamilyMember(familyId);
+      allow update: if isFamilyMember(familyId);
+      
+      match /bulletinBoard/{noteId} {
+        allow read, write: if isFamilyMember(familyId);
+      }
+
+      // FAMILY-SCOPED GROCERIES
+      match /groceryLists/{listId} {
+         allow read, write: if isFamilyMember(familyId);
+         
+         match /items/{itemId} {
+            allow read, write: if isFamilyMember(familyId);
+         }
+      }
+
+      // FAMILY-SCOPED MEMOIRS
+      match /memoirs/{memoirId} {
+          allow read, write: if isFamilyMember(familyId);
+
+          match /questions/{questionId} {
+              allow read, write: if isFamilyMember(familyId);
+              
+              match /answers/{answerId} {
+                  allow read, write: if isFamilyMember(familyId);
+              }
+          }
+      }
+
+      // FAMILY-SCOPED CHORES
+      match /chores/{choreId} {
+          allow read, write: if isFamilyMember(familyId);
+      }
+
+      // FAMILY-SCOPED EVENTS
+      match /events/{eventId} {
+          allow read, write: if isFamilyMember(familyId);
+      }
+      }
+    
+    // INVITES:
+    // - Create: Family members can invite
+    // - Read: Family members OR the invitee (by email) -> specific query needed for invitee
+    // For simplicity/security: 
+    //   - Family members can read invites for their family.
+    //   - "Pending" invites can be read by anyone if they know the ID? No, safer to query by email.
+    //   - BUT for the `checkInvite` function which queries by email, we need validation.
+    match /invites/{inviteId} {
+      allow create: if isFamilyMember(request.resource.data.familyId);
+      allow read: if isAuthenticated() && (
+        isFamilyMember(resource.data.familyId) || 
+        resource.data.email == request.auth.token.email // If email is available in token
+      );
+      // Fallback for query by email (requires index usually, and rules matching query)
+       allow list: if isAuthenticated() && (
+        isFamilyMember(resource.data.familyId) || 
+        resource.data.email == getUserData().email
+      );
+      
+      allow update: if isAuthenticated() && (
+        // Accepting the invite
+        resource.data.email == getUserData().email
+      );
+    }
+
+
+    // SHARED HELPER FOR CRUD
+    function canManageFamilyResource(resourceData) {
+      return isFamilyMember(resourceData.familyId);
+    }
+
+  }
+}
